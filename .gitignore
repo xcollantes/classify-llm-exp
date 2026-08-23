@@ -1,0 +1,6 @@
+.env
+env/
+__pycache__/
+results/cache_*.json
+.pytest_cache/
+results/test_embeddings.npy
