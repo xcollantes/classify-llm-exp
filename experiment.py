@@ -59,7 +59,7 @@ logger.basicConfig(
 logging = logger.getLogger(__name__)
 
 RESULTS: Path = Path("results")
-SEED: int = 42
+SEED: int = 67
 MAX_CHARS: int = 2000
 N_TRAIN: int = 800
 N_TEST: int = 400
@@ -69,9 +69,9 @@ CATEGORIES: list[str] = [
     "comp.graphics",
     "rec.sport.baseball",
     "sci.space",
-    "talk.politics.guns",
+    "sci.electronics",
 ]
-LABELS: list[str] = ["graphics", "baseball", "space", "guns"]
+LABELS: list[str] = ["graphics", "baseball", "space", "electronics"]
 CAT_TO_LABEL: dict[str, str] = dict(zip(CATEGORIES, LABELS))
 
 GEMINI_LLM: str = "gemini-2.5-flash"
