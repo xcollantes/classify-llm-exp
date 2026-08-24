@@ -19,6 +19,7 @@ import json
 import logging as logger
 import os
 import random
+import textwrap
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +37,7 @@ from sklearn.metrics import (
     confusion_matrix,
     f1_score,
 )
+from sklearn.utils import Bunch
 
 from models import (
     ExperimentConfig,
@@ -78,46 +80,58 @@ GEMINI_LLM: str = "gemini-2.5-flash"
 OPENAI_LLM: str = "gpt-4o-mini"
 EMBED_MODEL: str = "gemini-embedding-001"
 
-# List prices recorded 2026-08-22. Update if they move.
+# List prices as of 2026-08-22
 PRICING: dict[str, ModelPrice] = {
     GEMINI_LLM: ModelPrice(input_per_1m=0.30, output_per_1m=2.50),
     OPENAI_LLM: ModelPrice(input_per_1m=0.15, output_per_1m=0.60),
     EMBED_MODEL: ModelPrice(input_per_1m=0.15, output_per_1m=0.0),
 }
 
-PROMPT: str = (
-    "Classify the newsgroup post into exactly one of these topics: "
-    + ", ".join(LABELS)
-    + ".\nReply with the topic word only, nothing else.\n\nPost:\n{text}"
+PROMPT: str = textwrap.dedent(
+    f"""
+    Classify the news article into exactly one of these topics:
+    {", ".join(LABELS)}
+    Reply with the topic word only, nothing else.
+    Article:
+    {{text}}
+    """
 )
 
 
 def load_data(n_test: int) -> tuple[list[str], list[str], list[str], list[str]]:
-    """Load 20 Newsgroups, stripped of headers/footers/quotes.
+    """Load news articles omit headers/footers/quotes.
 
     Args:
-        n_test: Number of test documents to keep.
+        n_test: Number of test documents to keep from skikit
 
     Returns:
         (train_texts, train_labels, test_texts, test_labels)
     """
-    rng = random.Random(SEED)
+    rng: random.Random = random.Random(SEED)
+
     splits: list[list[tuple[str, str]]] = []
+
     for subset, n in (("train", N_TRAIN), ("test", n_test)):
-        bunch = fetch_20newsgroups(
+        bunch: Bunch = fetch_20newsgroups(
+            # Divided into train and test as per Kaggle
             subset=subset,
             categories=CATEGORIES,
+            # EXP_NOTE: try to remove noise
             remove=("headers", "footers", "quotes"),
             random_state=SEED,
         )
+
         rows: list[tuple[str, str]] = [
             (t.strip()[:MAX_CHARS], CAT_TO_LABEL[bunch.target_names[y]])
             for t, y in zip(bunch.data, bunch.target)
             if len(t.strip()) > 50
         ]
+
         rng.shuffle(rows)
         splits.append(rows[:n])
+
     train, test = splits
+
     return (
         [t for t, _ in train],
         [y for _, y in train],
