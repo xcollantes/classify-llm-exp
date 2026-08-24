@@ -2,8 +2,8 @@
 Text-classification experiment: frontier LLM zero-shot vs Gemini embeddings.
 
 Three systems classify the same 20 Newsgroups test set:
-  1. gemini-2.5-flash  zero-shot prompt
-  2. gpt-4o-mini       zero-shot prompt (same prompt)
+  1. gemini-3.5-flash-lite     zero-shot prompt
+  2. gpt-5.4-nano-2026-03-17   zero-shot prompt (same prompt)
   3. gemini-embedding-001 (task_type=CLASSIFICATION) + LogisticRegression
 
 A fourth arm re-embeds with task_type=SEMANTIC_SIMILARITY as a control, to
@@ -23,11 +23,16 @@ import textwrap
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import Any, Literal
 
 import numpy as np
 from dotenv import load_dotenv
+from google import genai
+from google.genai import Client as GeminiClient
+from google.genai import types
+from openai import OpenAI
 from pydantic import TypeAdapter
 from sklearn.datasets import fetch_20newsgroups
 from sklearn.linear_model import LogisticRegression
@@ -43,15 +48,10 @@ from models import (
     ExperimentConfig,
     ExperimentResults,
     LlmCall,
-    ModelPrice,
+    ModelInfo,
     SystemMetrics,
 )
 
-if TYPE_CHECKING:  # Reason: SDKs are imported lazily inside main().
-    from google.genai import Client as GeminiClient
-    from openai import OpenAI
-
-T = TypeVar("T")
 CALLS: TypeAdapter[list[LlmCall]] = TypeAdapter(list[LlmCall])
 
 logger.basicConfig(
@@ -74,17 +74,38 @@ CATEGORIES: list[str] = [
     "sci.electronics",
 ]
 LABELS: list[str] = ["graphics", "baseball", "space", "electronics"]
-CAT_TO_LABEL: dict[str, str] = dict(zip(CATEGORIES, LABELS))
+CAT_TO_LABEL = dict(zip(CATEGORIES, LABELS))
 
-GEMINI_LLM: str = "gemini-2.5-flash"
-OPENAI_LLM: str = "gpt-4o-mini"
-EMBED_MODEL: str = "gemini-embedding-001"
+GEMINI_LLM_MODEL_ID: str = "gemini-3.5-flash-lite"
+OPENAI_LLM_MODEL_ID: str = "gpt-5.4-nano-2026-03-17"
+EMBED_MODEL_ID: str = "gemini-embedding-001"
 
 # List prices as of 2026-08-22
-PRICING: dict[str, ModelPrice] = {
-    GEMINI_LLM: ModelPrice(input_per_1m=0.30, output_per_1m=2.50),
-    OPENAI_LLM: ModelPrice(input_per_1m=0.15, output_per_1m=0.60),
-    EMBED_MODEL: ModelPrice(input_per_1m=0.15, output_per_1m=0.0),
+PRICING: dict[str, ModelInfo] = {
+    GEMINI_LLM_MODEL_ID: ModelInfo(
+        name="Gemini 3.5 Flash-Lite",
+        model=GEMINI_LLM_MODEL_ID,
+        maker="Google DeepMind",
+        released="2026-07-21",
+        input_per_1m=0.30,
+        output_per_1m=2.50,
+    ),
+    OPENAI_LLM_MODEL_ID: ModelInfo(
+        name="GPT-5.4 nano",
+        model=OPENAI_LLM_MODEL_ID,
+        maker="OpenAI",
+        released="2026-03-17",
+        input_per_1m=0.20,
+        output_per_1m=1.25,
+    ),
+    EMBED_MODEL_ID: ModelInfo(
+        name="Gemini Embedding 001",
+        model=EMBED_MODEL_ID,
+        maker="Google DeepMind",
+        released="2025-10-31",
+        input_per_1m=0.15,
+        output_per_1m=0.0,
+    ),
 }
 
 PROMPT: str = textwrap.dedent(
@@ -121,6 +142,7 @@ def load_data(n_test: int) -> tuple[list[str], list[str], list[str], list[str]]:
             random_state=SEED,
         )
 
+        # Filter out any short articles and truncate long ones
         rows: list[tuple[str, str]] = [
             (t.strip()[:MAX_CHARS], CAT_TO_LABEL[bunch.target_names[y]])
             for t, y in zip(bunch.data, bunch.target)
@@ -129,6 +151,8 @@ def load_data(n_test: int) -> tuple[list[str], list[str], list[str], list[str]]:
 
         rng.shuffle(rows)
         splits.append(rows[:n])
+
+    print(f"SPLITS: {splits}")
 
     train, test = splits
 
@@ -150,14 +174,17 @@ def parse_label(reply: str) -> str:
         One of LABELS, or UNKNOWN when the reply matches none or several.
     """
     low = reply.strip().lower()
+
     for label in LABELS:
         if low == label:
             return label
+
     hits = [label for label in LABELS if label in low]
+
     return hits[0] if len(hits) == 1 else UNKNOWN
 
 
-def _retry(fn: Callable[[], T], tries: int = 5) -> T:
+def _retry(fn, tries: int = 5):
     """Call fn with exponential backoff on any exception.
 
     Args:
@@ -171,34 +198,46 @@ def _retry(fn: Callable[[], T], tries: int = 5) -> T:
         Exception: The last failure, once tries is exhausted.
     """
     for attempt in range(tries):
+
         try:
             return fn()
+
         except Exception as exc:  # Reason: 429/503 are the common ones.
             if attempt == tries - 1:
                 raise
+
             wait = 2**attempt
+
             logging.warning("retry %d after %ss: %s", attempt + 1, wait, exc)
+
             time.sleep(wait)
+
     raise RuntimeError("unreachable: loop always returns or raises")
 
 
-def call_gemini(client: "GeminiClient", text: str) -> LlmCall:
+def call_gemini(client, text: str) -> LlmCall:
     """One zero-shot classification call to Gemini."""
     from google.genai import types
 
     started = time.perf_counter()
+
     resp = _retry(
         lambda: client.models.generate_content(
-            model=GEMINI_LLM,
+            model=GEMINI_LLM_MODEL_ID,
             contents=PROMPT.format(text=text),
             config=types.GenerateContentConfig(
+                # zero for deterministic output
                 temperature=0,
                 max_output_tokens=800,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                # Gemini 3.x replaced thinking_budget with thinking_level;
+                # "minimal" is the closest equivalent to a zero budget.
+                thinking_config=types.ThinkingConfig(thinking_level="minimal"),
             ),
         )
     )
+
     usage = resp.usage_metadata
+
     return LlmCall(
         reply=(resp.text or "").strip(),
         latency_s=time.perf_counter() - started,
@@ -207,17 +246,19 @@ def call_gemini(client: "GeminiClient", text: str) -> LlmCall:
     )
 
 
-def call_openai(client: "OpenAI", text: str) -> LlmCall:
+def call_openai(client, text: str) -> LlmCall:
     """One zero-shot classification call to OpenAI."""
     started = time.perf_counter()
     resp = _retry(
         lambda: client.chat.completions.create(
-            model=OPENAI_LLM,
+            model=OPENAI_LLM_MODEL_ID,
+            # zero for deterministic output
             temperature=0,
-            max_tokens=10,
+            max_completion_tokens=10,
             messages=[{"role": "user", "content": PROMPT.format(text=text)}],
         )
     )
+
     return LlmCall(
         reply=(resp.choices[0].message.content or "").strip(),
         latency_s=time.perf_counter() - started,
@@ -244,19 +285,26 @@ def run_llm(
         One LlmCall per input document, in order.
     """
     cache = RESULTS / f"cache_{name}.json"
+
     if cache.exists():
         rows = CALLS.validate_json(cache.read_bytes())
+
         if len(rows) == len(texts):
             logging.info("%s: %d cached results reused", name, len(rows))
+
             return rows
+
     logging.info("%s: calling API for %d docs", name, len(texts))
+
     with ThreadPoolExecutor(max_workers=8) as pool:
         rows = list(pool.map(lambda t: call(client, t), texts))
+
     cache.write_bytes(CALLS.dump_json(rows))
+
     return rows
 
 
-def embed(client: "GeminiClient", texts: list[str], task_type: str) -> np.ndarray:
+def embed(client, texts: list[str], task_type: str) -> np.ndarray:
     """Embed texts with gemini-embedding-001, cached to disk.
 
     Args:
@@ -267,24 +315,28 @@ def embed(client: "GeminiClient", texts: list[str], task_type: str) -> np.ndarra
     Returns:
         L2-normalised embedding matrix, one row per document.
     """
-    from google.genai import types
 
     cache = RESULTS / f"cache_embed_{task_type.lower()}_{len(texts)}.json"
+
     if cache.exists():
         logging.info("embed %s: %d cached vectors reused", task_type, len(texts))
         return np.array(json.loads(cache.read_text()))
+
     logging.info("embed %s: %d docs", task_type, len(texts))
+
     vectors: list[list[float]] = []
+
     for i in range(0, len(texts), 50):
         batch = texts[i : i + 50]
         resp = _retry(
             lambda: client.models.embed_content(
-                model=EMBED_MODEL,
+                model=EMBED_MODEL_ID,
                 contents=batch,
                 config=types.EmbedContentConfig(task_type=task_type),
             )
         )
         vectors.extend(e.values for e in resp.embeddings)
+
     arr = np.array(vectors)
     return arr / np.linalg.norm(arr, axis=1, keepdims=True)
 
@@ -374,6 +426,7 @@ def token_cost(rows: list[LlmCall], model: str) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+
     parser.add_argument(
         "--limit",
         type=int,
@@ -383,8 +436,6 @@ def main() -> None:
     args = parser.parse_args()
 
     load_dotenv()
-    from google import genai
-    from openai import OpenAI
 
     gclient = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
     oclient = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -395,15 +446,15 @@ def main() -> None:
     systems: dict[str, SystemMetrics] = {}
     predictions: dict[str, list[str]] = {}
 
-    # --- Arm 1 & 2: zero-shot LLMs -------------------------------------
-    for name, model, call, client in (
-        ("gemini-2.5-flash", GEMINI_LLM, call_gemini, gclient),
-        ("gpt-4o-mini", OPENAI_LLM, call_openai, oclient),
+    # Arm 1 and 2: zero-shot LLMs
+    for model, call, client in (
+        (GEMINI_LLM_MODEL_ID, call_gemini, gclient),
+        (OPENAI_LLM_MODEL_ID, call_openai, oclient),
     ):
-        rows = run_llm(name, call, client, x_test)
+        rows = run_llm(model, call, client, x_test)
         preds = [parse_label(r.reply) for r in rows]
-        systems[name] = score(
-            name,
+        systems[model] = score(
+            model,
             y_test,
             preds,
             [r.latency_s for r in rows],
@@ -411,9 +462,9 @@ def main() -> None:
             kind="llm-zero-shot",
             labeled_examples=0,
         )
-        predictions[name] = preds
+        predictions[model] = preds
 
-    # --- Arm 3 & 4: embeddings + logistic regression --------------------
+    # Arm 3 & 4: embeddings + logistic regression
     for name, task in (
         ("embed-CLASSIFICATION", "CLASSIFICATION"),
         ("embed-SEMANTIC_SIMILARITY", "SEMANTIC_SIMILARITY"),
@@ -428,7 +479,7 @@ def main() -> None:
         # Reason: ~1 token per 4 chars; inference-side docs only, since
         # embedding the training set is a one-off cost.
         infer_tokens = sum(len(t) for t in x_test) / 4
-        cost = infer_tokens * PRICING[EMBED_MODEL].input_per_1m / 1e6
+        cost = infer_tokens * PRICING[EMBED_MODEL_ID].input_per_1m / 1e6
         systems[name] = score(
             name,
             y_test,
@@ -443,7 +494,7 @@ def main() -> None:
         if task == "CLASSIFICATION":
             np.save(RESULTS / "test_embeddings.npy", test_vec)
 
-    # --- Persist --------------------------------------------------------
+    # Persist
     with open(RESULTS / "predictions.csv", "w", newline="") as fh:
         writer = csv.writer(fh)
         names = list(systems)
@@ -458,6 +509,7 @@ def main() -> None:
     results = ExperimentResults(
         config=ExperimentConfig(
             dataset="20newsgroups (headers/footers/quotes removed)",
+            run_date=date.today().isoformat(),
             labels=LABELS,
             n_train=len(x_train),
             n_test=len(x_test),

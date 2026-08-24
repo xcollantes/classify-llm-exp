@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from models import ExperimentConfig, ExperimentResults, ModelPrice, SystemMetrics
+from models import ExperimentConfig, ExperimentResults, ModelInfo, SystemMetrics
 
 
 def make_metrics(**overrides: object) -> SystemMetrics:
@@ -37,6 +37,7 @@ def make_config(**overrides: object) -> ExperimentConfig:
     """Build a valid ExperimentConfig, with fields overridden for the test."""
     base = dict(
         dataset="20newsgroups",
+        run_date="2026-01-01",
         labels=["a", "b"],
         n_train=800,
         n_test=2,
@@ -44,7 +45,14 @@ def make_config(**overrides: object) -> ExperimentConfig:
         max_chars=2000,
         prompt="classify: {text}",
         pricing_usd_per_1m_tokens={
-            "m": ModelPrice(input_per_1m=0.1, output_per_1m=0.2)
+            "m": ModelInfo(
+                name="m",
+                model="m",
+                maker="ACME",
+                released="2026-01-01",
+                input_per_1m=0.1,
+                output_per_1m=0.2,
+            )
         },
     )
     return ExperimentConfig(**{**base, **overrides})

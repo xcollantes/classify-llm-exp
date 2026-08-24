@@ -11,13 +11,21 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-class ModelPrice(BaseModel):
-    """List price for one model, USD per 1 million tokens."""
+class ModelInfo(BaseModel):
+    """Model info."""
 
     model_config: ConfigDict = ConfigDict(extra="forbid")
 
-    input_per_1m: float = Field(ge=0)
-    output_per_1m: float = Field(ge=0)
+    name: str = Field(description="Human readable model name")
+    model: str = Field(description="Model identifier")
+    maker: str = Field(description="Organisation that trained the model")
+    released: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="Public release date, ISO YYYY-MM-DD",
+    )
+
+    input_per_1m: float = Field(ge=0, description="Input cost per 1M tokens")
+    output_per_1m: float = Field(ge=0, description="Output cost per 1M tokens")
 
 
 class LlmCall(BaseModel):
@@ -36,9 +44,11 @@ class SystemMetrics(BaseModel):
 
     model_config: ConfigDict = ConfigDict(extra="forbid")
 
-    name: str
-    kind: Literal["llm-zero-shot", "embedding+logreg"]
-    labeled_examples: int = Field(ge=0)
+    name: str = Field(description="System name")
+    kind: Literal["llm-zero-shot", "embedding+logreg"] = Field(
+        description="System kind"
+    )
+    labeled_examples: int = Field(ge=0, description="Number of labeled examples")
     accuracy: float = Field(ge=0, le=1)
     macro_f1: float = Field(ge=0, le=1)
     accuracy_ci95: tuple[float, float]
@@ -70,13 +80,17 @@ class ExperimentConfig(BaseModel):
     model_config: ConfigDict = ConfigDict(extra="forbid")
 
     dataset: str
+    run_date: str = Field(
+        pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="Date the experiment was run, ISO YYYY-MM-DD",
+    )
     labels: list[str] = Field(min_length=2)
     n_train: int = Field(ge=0)
     n_test: int = Field(gt=0)
     seed: int
     max_chars: int = Field(gt=0)
     prompt: str
-    pricing_usd_per_1m_tokens: dict[str, ModelPrice]
+    pricing_usd_per_1m_tokens: dict[str, ModelInfo]
 
 
 class ExperimentResults(BaseModel):

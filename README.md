@@ -8,14 +8,14 @@ LLM at zero-shot topic classification, and does Gemini's
 
 | Arm | Method | Labelled data |
 |---|---|---|
-| `gemini-2.5-flash` | zero-shot prompt, temp 0 | 0 |
-| `gpt-4o-mini` | same prompt, temp 0 | 0 |
+| `gemini-3.5-flash-lite` | zero-shot prompt, temp 0 | 0 |
+| `gpt-5.4-nano-2026-03-17` | same prompt, temp 0 | 0 |
 | `embed-CLASSIFICATION` | `gemini-embedding-001` (`task_type=CLASSIFICATION`) → logistic regression | 800 |
 | `embed-SEMANTIC_SIMILARITY` | identical, but `task_type=SEMANTIC_SIMILARITY` — the control | 800 |
 
 All four score the same 400-document test set: 20 Newsgroups, four classes
-(`comp.graphics`, `rec.sport.baseball`, `sci.space`, `talk.politics.guns`),
-headers/footers/quotes stripped, seed 42.
+(`comp.graphics`, `rec.sport.baseball`, `sci.space`, `sci.electronics`),
+headers/footers/quotes stripped, seed 67.
 
 ## Run it
 

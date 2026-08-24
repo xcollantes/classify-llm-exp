@@ -7,19 +7,20 @@ those PNGs into the single self-contained results/report.html.
 import base64
 from pathlib import Path
 
+from experiment import EMBED_MODEL_ID, GEMINI_LLM_MODEL_ID, OPENAI_LLM_MODEL_ID
 from models import ExperimentResults, SystemMetrics
 
 CHARTS: Path = Path("results") / "charts"
 
 ORDER: list[str] = [
-    "gemini-2.5-flash",
-    "gpt-4o-mini",
+    GEMINI_LLM_MODEL_ID,
+    OPENAI_LLM_MODEL_ID,
     "embed-CLASSIFICATION",
     "embed-SEMANTIC_SIMILARITY",
 ]
 SHORT: dict[str, str] = {
-    "gemini-2.5-flash": "Gemini 2.5 Flash\n(zero-shot)",
-    "gpt-4o-mini": "GPT-4o mini\n(zero-shot)",
+    GEMINI_LLM_MODEL_ID: "Gemini 3.5 Flash-Lite\n(zero-shot)",
+    OPENAI_LLM_MODEL_ID: "GPT-5.4 nano\n(zero-shot)",
     "embed-CLASSIFICATION": "gemini-embedding-001\nCLASSIFICATION + LR",
     "embed-SEMANTIC_SIMILARITY": "gemini-embedding-001\nSEMANTIC_SIMILARITY + LR",
 }
@@ -38,6 +39,35 @@ def figure(name: str, caption: str) -> str:
   <img class="dark-only" src="data:image/png;base64,{b64(dark)}" alt="{caption}">
   <figcaption>{caption}</figcaption>
 </figure>"""
+
+
+def candidates_table(m: ExperimentResults) -> str:
+    """The three candidates side by side: provenance, price, and how they did.
+
+    The embedding row reports the headline CLASSIFICATION arm; its
+    SEMANTIC_SIMILARITY twin is the control, covered in section 4.
+    """
+    sys, price = m.systems, m.config.pricing_usd_per_1m_tokens
+    rows = ""
+    for model_id, arm, role in (
+        (GEMINI_LLM_MODEL_ID, GEMINI_LLM_MODEL_ID, "LLM · zero-shot"),
+        (OPENAI_LLM_MODEL_ID, OPENAI_LLM_MODEL_ID, "LLM · zero-shot"),
+        (EMBED_MODEL_ID, "embed-CLASSIFICATION", "Embedding + LR"),
+    ):
+        p, s = price[model_id], sys[arm]
+        out = f"${p.output_per_1m:.2f}" if p.output_per_1m else "—"
+        rows += (
+            f"<tr><td><b>{p.name}</b><br>"
+            f"<span class='ci'><code>{p.model}</code></span></td>"
+            f"<td>{p.maker}</td>"
+            f"<td>{p.released}</td>"
+            f"<td>{role}</td>"
+            f"<td class='num'>${p.input_per_1m:.2f} / {out}</td>"
+            f"<td class='num'><b>{s.accuracy:.1%}</b></td>"
+            f"<td class='num'>{s.macro_f1:.3f}</td>"
+            f"<td class='num'>${s.cost_usd_per_1k_docs:.3f}</td></tr>"
+        )
+    return rows
 
 
 def metrics_table(m: ExperimentResults) -> str:
@@ -82,11 +112,11 @@ PIPELINE_SVG: str = """
   <path class="ar" d="M142 140 H 300"/>
 
   <rect class="bx" x="304" y="18" width="230" height="56" style="stroke:var(--s1)"/>
-  <text class="lb" x="419" y="40" text-anchor="middle">Gemini 2.5 Flash</text>
+  <text class="lb" x="419" y="40" text-anchor="middle">Gemini 3.5 Flash-Lite</text>
   <text class="sb" x="419" y="58" text-anchor="middle">zero-shot prompt, temp 0</text>
 
   <rect class="bx" x="304" y="96" width="230" height="56" style="stroke:var(--s2)"/>
-  <text class="lb" x="419" y="118" text-anchor="middle">GPT-4o mini</text>
+  <text class="lb" x="419" y="118" text-anchor="middle">GPT-5.4 nano</text>
   <text class="sb" x="419" y="136" text-anchor="middle">same prompt, temp 0</text>
 
   <rect class="bx" x="304" y="174" width="230" height="62" style="stroke:var(--s3)"/>
@@ -108,9 +138,19 @@ def build_html(m: ExperimentResults) -> str:
     sys, cfg = m.systems, m.config
     best = max(ORDER, key=lambda n: sys[n].accuracy)
     cls, sim = sys["embed-CLASSIFICATION"], sys["embed-SEMANTIC_SIMILARITY"]
-    gem, oai = sys["gemini-2.5-flash"], sys["gpt-4o-mini"]
+    gem, oai = sys[GEMINI_LLM_MODEL_ID], sys[OPENAI_LLM_MODEL_ID]
     cheapest = min(ORDER, key=lambda n: sys[n].cost_usd_per_1k_docs)
     task_delta = cls.accuracy - sim.accuracy
+
+    # Headline comparison for section 1: the stronger LLM against the cheap
+    # embedding arm, on both axes the experiment cares about.
+    best_llm = max((gem, oai), key=lambda s: s.accuracy)
+    acc_gap = cls.accuracy - best_llm.accuracy
+    cost_ratio = (
+        best_llm.cost_usd_per_1k_docs / cls.cost_usd_per_1k_docs
+        if cls.cost_usd_per_1k_docs
+        else 0.0
+    )
 
     return f"""<title>Embeddings vs Frontier LLMs</title>
 <style>
@@ -146,6 +186,20 @@ def build_html(m: ExperimentResults) -> str:
   h3 {{ font: 600 15px/1.3 system-ui, sans-serif; margin: 28px 0 8px; }}
   .sub {{ color: var(--muted); font: 15px/1.5 system-ui, sans-serif;
     margin: 0 0 6px; }}
+  .q {{ font: 600 19px/1.45 system-ui, sans-serif; color: var(--text);
+    margin: 0 0 16px; padding-left: 14px;
+    border-left: 3px solid var(--s3); }}
+  .byline {{ font: 600 14px system-ui, sans-serif; color: var(--text);
+    margin: 0 0 4px; }}
+  .defs {{ display: grid; gap: 14px; margin: 20px 0 24px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }}
+  .def {{ background: var(--panel); border: 1px solid var(--rule);
+    border-left: 3px solid var(--s1); border-radius: 8px; padding: 14px 16px; }}
+  .def.emb {{ border-left-color: var(--s3); }}
+  .def h4 {{ font: 700 14px/1.3 system-ui, sans-serif; margin: 0 0 6px; }}
+  .def p {{ font: 14px/1.55 system-ui, sans-serif; margin: 0 0 8px; }}
+  .def p:last-child {{ margin-bottom: 0; }}
+  .def .out {{ color: var(--muted); font-size: 13px; }}
   .meta {{ color: var(--muted); font: 13px system-ui, sans-serif;
     margin: 0 0 34px; }}
   p {{ margin: 0 0 14px; }}
@@ -189,8 +243,10 @@ def build_html(m: ExperimentResults) -> str:
 
 <main>
 <h1>Embeddings vs Frontier LLMs</h1>
-<p class="sub">Does a $0.0002 embedding classifier beat a frontier LLM at
-picking one of four topics?</p>
+<p class="sub">Can an embedding model that costs
+${cls.cost_usd_per_1k_docs:.3f} per 1,000 documents beat a frontier LLM at
+sorting news articles into four topics?</p>
+<p class="byline">by Xavier Collantes · {cfg.run_date}</p>
 <p class="meta">{cfg.n_test} test documents · {cfg.n_train} training
 documents · 20 Newsgroups · seed {cfg.seed}</p>
 
@@ -201,24 +257,79 @@ documents · 20 Newsgroups · seed {cfg.seed}</p>
   <div class="card"><div class="k">Cheapest</div>
     <div class="v">${sys[cheapest].cost_usd_per_1k_docs:.3f}</div>
     <div class="n">per 1,000 docs — {SHORT[cheapest].split(chr(10))[0]}</div></div>
-  <div class="card"><div class="k">Task-type gain</div>
+  <div class="card"><div class="k">Task-type delta</div>
     <div class="v">{task_delta:+.1%}</div>
-    <div class="n">CLASSIFICATION over SEMANTIC_SIMILARITY</div></div>
+    <div class="n">CLASSIFICATION vs SEMANTIC_SIMILARITY, inside the CI</div></div>
   <div class="card"><div class="k">LLM gap</div>
     <div class="v">{gem.accuracy - oai.accuracy:+.1%}</div>
-    <div class="n">Gemini Flash minus GPT-4o mini</div></div>
+    <div class="n">Gemini Flash-Lite minus GPT-5.4 nano</div></div>
 </div>
 
 <h2>1 · What was tested</h2>
-<p>Three ways to put a topic label on a piece of text, run over the identical
-{cfg.n_test}-document test set. Two are zero-shot frontier LLMs given the
-label list and nothing else. The third never sees a prompt: it turns each
-document into a vector with <code>gemini-embedding-001</code> at
-<code>task_type=CLASSIFICATION</code> and hands those vectors to a logistic
-regression trained on {cfg.n_train} labelled examples.</p>
-<p>A fourth arm re-runs the embedding pipeline unchanged except for
-<code>task_type=SEMANTIC_SIMILARITY</code>. It exists to answer a narrower
-question: does the task type actually do anything, or is it decoration?</p>
+<p class="q">Can 3 AI models classify news articles? Two are LLMs. One is a
+super cheap embedding model.</p>
+
+<div class="tw"><table>
+<thead><tr>
+  <th>Candidate</th><th>Maker</th><th>Released</th><th>Role</th>
+  <th style="text-align:right">Price in / out per 1M</th>
+  <th style="text-align:right">Accuracy</th>
+  <th style="text-align:right">Macro F1</th>
+  <th style="text-align:right">$/1k docs</th>
+</tr></thead>
+<tbody>{candidates_table(m)}</tbody>
+</table></div>
+<p class="meta">Prices are list prices per 1M tokens; embeddings have no output
+charge. The embedding row is the <code>CLASSIFICATION</code> arm; its
+<code>SEMANTIC_SIMILARITY</code> control is in section 4.</p>
+
+<h3>LLMs and embedding models do different jobs</h3>
+<p>Both read text. Only one of them writes any back.</p>
+
+<div class="defs">
+  <div class="def">
+    <h4>LLM (large language model)</h4>
+    <p>You describe the job in a prompt, "pick one of these four topics", and
+    it answers in words. Nobody trained it on your task. It's reading your
+    instructions at the moment you ask.</p>
+    <p class="out">Output is words. It needs no labelled data at all. You pay
+    per token going in and per token coming back, every call, so longer
+    articles cost you more.</p>
+  </div>
+  <div class="def emb">
+    <h4>Embedding model</h4>
+    <p>It reads text and gives back a list of numbers. {cls.dim:,} of them
+    here, placing the article in a space where similar meanings sit close
+    together. Ask it a question and you still get numbers. This is what RAG
+    and vector search run on: embed once, then compare vectors.</p>
+    <p class="out">Output is a vector. To turn vectors into labels you bolt a
+    classifier on top, trained here on {cfg.n_train} examples. You pay for
+    input tokens only.</p>
+  </div>
+</div>
+<p>The LLM does the whole job on its own and bills you for it. The embedding
+model does half the job much cheaper and leaves the other half to you. That
+other half is a logistic regression, which costs nothing to fit and nothing to
+run.</p>
+
+<p>Quality and cost both matter here, and they pull against each other. The two
+LLM arms get the label list and the article in a prompt, then answer in words.
+The embedding arm never sees a prompt. It turns each article into a vector with
+<code>gemini-embedding-001</code> at <code>task_type=CLASSIFICATION</code>, and
+a logistic regression trained on {cfg.n_train} labelled examples reads those
+vectors. All three scored the same {cfg.n_test} documents.</p>
+<p>The cheap arm won on both counts. It scored
+<b>{cls.accuracy:.1%}</b> accuracy at {cls.macro_f1:.3f} macro F1, against
+<b>{best_llm.accuracy:.1%}</b> and {best_llm.macro_f1:.3f} for the better of
+the two LLMs, a gap of {acc_gap:+.1%}. It also cost
+<b>${cls.cost_usd_per_1k_docs:.3f}</b> per 1,000 documents where that LLM cost
+<b>${best_llm.cost_usd_per_1k_docs:.3f}</b>, roughly
+<b>{cost_ratio:.0f}× more</b>. What the extra money buys is a cold start. The
+LLMs needed no labelled data at all, where the embedding arm needed
+{cfg.n_train} documents before it could label anything.</p>
+<p>A fourth arm runs that same embedding pipeline with one string changed,
+<code>task_type=SEMANTIC_SIMILARITY</code>. It's there to check whether the
+task type does any work at all.</p>
 
 <figure>{PIPELINE_SVG}
 <figcaption>The three pipelines. Only the middle stage differs; the input and
@@ -227,7 +338,8 @@ the scoring are identical.</figcaption></figure>
 <h3>Setup</h3>
 <ul>
   <li><b>Data.</b> 20 Newsgroups with headers, footers and quoted replies
-  stripped — the metadata that makes this dataset trivially easy. Classes:
+  stripped out. That metadata is what makes this dataset trivially easy.
+  Classes:
   {', '.join('<code>' + c + '</code>' for c in cfg.labels)}. Documents
   truncated to {cfg.max_chars:,} characters.</li>
   <li><b>Split.</b> {cfg.n_train} train / {cfg.n_test} test, sampled
@@ -241,13 +353,13 @@ the scoring are identical.</figcaption></figure>
   label or several is counted <code>__unknown__</code> and scored wrong, with
   the count reported separately.</li>
   <li><b>Cost.</b> Measured tokens × list price
-  (Gemini Flash ${cfg.pricing_usd_per_1m_tokens['gemini-2.5-flash'].input_per_1m}/
-  ${cfg.pricing_usd_per_1m_tokens['gemini-2.5-flash'].output_per_1m},
-  GPT-4o mini ${cfg.pricing_usd_per_1m_tokens['gpt-4o-mini'].input_per_1m}/
-  ${cfg.pricing_usd_per_1m_tokens['gpt-4o-mini'].output_per_1m},
-  embeddings ${cfg.pricing_usd_per_1m_tokens['gemini-embedding-001'].input_per_1m}
-  per 1M in/out tokens). Embedding cost counts inference only — training-set
-  embedding is a one-off.</li>
+  (Gemini Flash-Lite ${cfg.pricing_usd_per_1m_tokens[GEMINI_LLM_MODEL_ID].input_per_1m}/
+  ${cfg.pricing_usd_per_1m_tokens[GEMINI_LLM_MODEL_ID].output_per_1m},
+  GPT-5.4 nano ${cfg.pricing_usd_per_1m_tokens[OPENAI_LLM_MODEL_ID].input_per_1m}/
+  ${cfg.pricing_usd_per_1m_tokens[OPENAI_LLM_MODEL_ID].output_per_1m},
+  embeddings ${cfg.pricing_usd_per_1m_tokens[EMBED_MODEL_ID].input_per_1m}
+  per 1M in/out tokens). Embedding cost counts inference only, since embedding
+  the training set is a one-off.</li>
 </ul>
 
 <h2>2 · Headline result</h2>
@@ -273,44 +385,51 @@ mistakes them for.</p>
 {figure('confusion', 'Confusion matrices, counts, shaded by row-normalised rate. Rows are the true class, columns the prediction; off-diagonal mass is the error structure.')}
 
 <h2>4 · Why the embedding arm works</h2>
-<p>The embedding classifier is not doing anything clever. With
-<code>task_type=CLASSIFICATION</code> the vectors already arrange themselves
-into class-shaped regions before any classifier is fitted — the logistic
-regression only has to draw the boundaries. Below is the first two principal
-components of the test-set embeddings, faceted so each class is highlighted
-against the rest.</p>
-{figure('embedding_pca', 'PCA of CLASSIFICATION-task embeddings, one class highlighted per panel. Two components of a ' + str(cls.dim) + '-dimensional space — real separation is cleaner than this projection makes it look.')}
+<p>The embedding classifier is not doing anything clever. The vectors turn up
+already sorted into class-shaped clumps, before any classifier has touched
+them, so the logistic regression only has to draw lines between the clumps.
+The chart below plots the first two principal components of the test-set
+embeddings, with one class lit up per panel.</p>
+{figure('embedding_pca', 'PCA of CLASSIFICATION-task embeddings, one class highlighted per panel. Two components of a ' + str(cls.dim) + '-dimensional space, so the real separation is cleaner than this projection makes it look.')}
 
-<h3>The task type is not decoration</h3>
-<p>Same model, same documents, same classifier, one string changed:
-<code>CLASSIFICATION</code> scored {cls.accuracy:.1%} against
-{sim.accuracy:.1%} for <code>SEMANTIC_SIMILARITY</code>, a
-{task_delta:+.1%} difference.</p>
+<h3>Does the task type earn its keyword?</h3>
+<p>Same model, same documents, same classifier, one string changed.
+<code>CLASSIFICATION</code> scored {cls.accuracy:.1%}
+[{cls.accuracy_ci95[0]:.1%}–{cls.accuracy_ci95[1]:.1%}].
+<code>SEMANTIC_SIMILARITY</code>, the control, scored {sim.accuracy:.1%}
+[{sim.accuracy_ci95[0]:.1%}–{sim.accuracy_ci95[1]:.1%}]. That's
+{abs(task_delta):.1%} the wrong way round, and the intervals overlap almost
+end to end. {cfg.n_test} documents can't tell these two apart. A control
+edging past the thing it was meant to isolate usually means there is nothing
+there to find, at least not on four topics this far apart. Pick either one.</p>
 
 <h2>5 · Latency and cost</h2>
 {figure('latency', 'Per-document latency. LLM arms are per-call wall clock at concurrency 8; embedding arms are the total embed-plus-predict time amortised over the test set.')}
-{figure('cost_accuracy', 'Cost against accuracy. The x-axis is log-scaled — the horizontal gaps are order-of-magnitude gaps.')}
+{figure('cost_accuracy', 'Cost against accuracy. The x-axis is log-scaled, so the horizontal gaps are order-of-magnitude gaps.')}
 
 <h2>6 · What this means</h2>
 <ul>
-  <li><b>If you have labelled data, embed it.</b> The embedding classifier is
-  the cheapest arm by a wide margin and competitive on accuracy. Its cost does
-  not grow with prompt length the way an LLM's does, and it has no parsing
-  failure mode.</li>
+  <li><b>If you have labelled data, embed it.</b> The embedding classifier was
+  the cheapest arm by a wide margin and matched the LLMs on accuracy. Its cost
+  does not climb with prompt length the way an LLM's does, and it cannot
+  return an unparseable answer.</li>
   <li><b>Zero-shot LLMs buy you the cold start.</b> They needed no labelled
-  data at all. That is the whole trade: the embedding arm's
-  {cfg.n_train}-document training set is a real prerequisite.</li>
-  <li><b>Set the task type.</b> It is one keyword argument and it moved
-  accuracy by {abs(task_delta):.1%} here.</li>
+  data at all. That is the whole trade, and the embedding arm's
+  {cfg.n_train}-document training set is a real prerequisite, not a
+  formality.</li>
+  <li><b>The task type decided nothing here.</b> The two settings landed
+  {abs(task_delta):.1%} apart with confidence intervals sitting on top of each
+  other. On four topics this distinct, either one works. Test it again before
+  trusting it on a harder label set.</li>
 </ul>
 
 <h2>7 · Limitations</h2>
 <ul>
-  <li>Four well-separated topics. Harder label sets — fine-grained intent,
-  overlapping categories, class imbalance — compress the gaps and can flip the
+  <li>Four well-separated topics. Harder label sets (fine-grained intent,
+  overlapping categories, class imbalance) compress the gaps and can flip the
   ordering.</li>
-  <li>Zero-shot only. Few-shot prompting or fine-tuning would likely close some
-  of the LLM arms' gap, at more tokens per call.</li>
+  <li>Zero-shot only. Few-shot prompting or fine-tuning would probably close
+  some of the LLM arms' gap, at more tokens per call.</li>
   <li>Single prompt, single run at temperature 0. No prompt-variation study;
   the LLM numbers carry prompt-sensitivity that the CI does not capture.</li>
   <li>Latency was measured over the public internet at concurrency 8 and mixes

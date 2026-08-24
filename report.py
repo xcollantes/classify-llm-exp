@@ -18,6 +18,7 @@ from matplotlib.axes import Axes
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.figure import Figure
 
+from experiment import GEMINI_LLM_MODEL_ID, OPENAI_LLM_MODEL_ID
 from models import ExperimentResults
 from template import build_html
 
@@ -52,20 +53,20 @@ THEMES: dict[str, Theme] = {
 
 # Display order: the two LLM arms, the headline embedding arm, then the control.
 ORDER: list[str] = [
-    "gemini-2.5-flash",
-    "gpt-4o-mini",
+    GEMINI_LLM_MODEL_ID,
+    OPENAI_LLM_MODEL_ID,
     "embed-CLASSIFICATION",
     "embed-SEMANTIC_SIMILARITY",
 ]
 TERSE: dict[str, str] = {
-    "gemini-2.5-flash": "Gemini 2.5 Flash",
-    "gpt-4o-mini": "GPT-4o mini",
+    GEMINI_LLM_MODEL_ID: "Gemini 3.5 Flash-Lite",
+    OPENAI_LLM_MODEL_ID: "GPT-5.4 nano",
     "embed-CLASSIFICATION": "embed · CLASSIFICATION",
     "embed-SEMANTIC_SIMILARITY": "embed · SEMANTIC_SIMILARITY",
 }
 SHORT: dict[str, str] = {
-    "gemini-2.5-flash": "Gemini 2.5 Flash\n(zero-shot)",
-    "gpt-4o-mini": "GPT-4o mini\n(zero-shot)",
+    GEMINI_LLM_MODEL_ID: "Gemini 3.5 Flash-Lite\n(zero-shot)",
+    OPENAI_LLM_MODEL_ID: "GPT-5.4 nano\n(zero-shot)",
     "embed-CLASSIFICATION": "gemini-embedding-001\nCLASSIFICATION + LR",
     "embed-SEMANTIC_SIMILARITY": "gemini-embedding-001\nSEMANTIC_SIMILARITY + LR",
 }
