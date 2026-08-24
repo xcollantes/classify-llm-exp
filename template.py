@@ -199,9 +199,9 @@ def build_html(m: ExperimentResults) -> str:
     font: 16px/1.65 ui-serif, Georgia, serif; }}
   main {{ max-width: 900px; margin: 0 auto; padding: 56px 24px 96px; }}
   h1 {{ font: 700 34px/1.2 system-ui, sans-serif; margin: 0 0 8px; }}
-  h2 {{ font: 700 20px/1.3 system-ui, sans-serif; margin: 52px 0 14px;
+  h2 {{ font: 700 26px/1.3 system-ui, sans-serif; margin: 52px 0 16px;
     padding-top: 18px; border-top: 1px solid var(--rule); }}
-  h3 {{ font: 600 15px/1.3 system-ui, sans-serif; margin: 28px 0 8px; }}
+  h3 {{ font: 700 18px/1.3 system-ui, sans-serif; margin: 28px 0 10px; }}
   .sub {{ color: var(--muted); font: 15px/1.5 system-ui, sans-serif;
     margin: 0 0 6px; }}
   .q {{ font: 600 19px/1.45 system-ui, sans-serif; color: var(--text);
@@ -382,7 +382,7 @@ the scoring are identical.</figcaption></figure>
   the training set is a one-off.</li>
 </ul>
 
-<h2>2 · Headline result</h2>
+<h2>Headline result</h2>
 {figure('accuracy_f1', 'Accuracy and macro F1 for all four arms. Error bars are 95% bootstrap confidence intervals on accuracy.')}
 
 <div class="tw"><table>
@@ -397,14 +397,14 @@ the scoring are identical.</figcaption></figure>
 <tbody>{metrics_table(m)}</tbody>
 </table></div>
 
-<h2>3 · Where the errors are</h2>
+<h2>Where the errors are</h2>
 <p>Aggregate accuracy hides the shape of the mistakes. The per-class F1 chart
 shows which topics each system finds hard; the confusion matrices show what it
 mistakes them for.</p>
 {figure('per_class_f1', 'Per-class F1. A system that is uniformly mediocre looks very different from one that fails a single class.')}
 {figure('confusion', 'Confusion matrices, counts, shaded by row-normalised rate. Rows are the true class, columns the prediction; off-diagonal mass is the error structure.')}
 
-<h2>4 · Why the embedding arm works</h2>
+<h2>Why the embedding arm works</h2>
 <p>The embedding classifier is not doing anything clever. The vectors turn up
 already sorted into class-shaped clumps, before any classifier has touched
 them, so the logistic regression only has to draw lines between the clumps.
@@ -423,11 +423,11 @@ end to end. {cfg.n_test} documents can't tell these two apart. A control
 edging past the thing it was meant to isolate usually means there is nothing
 there to find, at least not on four topics this far apart. Pick either one.</p>
 
-<h2>5 · Latency and cost</h2>
+<h2>Latency and cost</h2>
 {figure('latency', 'Per-document latency. LLM arms are per-call wall clock at concurrency 8; embedding arms are the total embed-plus-predict time amortised over the test set.')}
 {figure('cost_accuracy', 'Cost against accuracy. The x-axis is log-scaled, so the horizontal gaps are order-of-magnitude gaps.')}
 
-<h2>6 · What this means</h2>
+<h2>What this means</h2>
 <ul>
   <li><b>If you have labelled data, embed it.</b> The embedding classifier was
   the cheapest arm by a wide margin and matched the LLMs on accuracy. Its cost
@@ -443,7 +443,7 @@ there to find, at least not on four topics this far apart. Pick either one.</p>
   trusting it on a harder label set.</li>
 </ul>
 
-<h2>7 · Limitations</h2>
+<h2>Limitations</h2>
 <ul>
   <li>Four well-separated topics. Harder label sets (fine-grained intent,
   overlapping categories, class imbalance) compress the gaps and can flip the
@@ -457,7 +457,7 @@ there to find, at least not on four topics this far apart. Pick either one.</p>
   <li>Costs are list prices at the time of the run, not billed amounts.</li>
 </ul>
 
-<h2>8 · Reproduce</h2>
+<h2>Reproduce</h2>
 <pre>python3 -m venv env &amp;&amp; source env/bin/activate
 pip install -r requirements.txt
 cp .env.example .env      # add GEMINI_API_KEY and OPENAI_API_KEY
