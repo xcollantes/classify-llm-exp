@@ -29,6 +29,9 @@ logging = logger.getLogger(__name__)
 
 RESULTS: Path = Path("results")
 CHARTS: Path = RESULTS / "charts"
+# GitHub Pages serves this repo from the main branch's docs/ folder. The
+# report embeds its charts as base64, so index.html is the whole site.
+PAGES: Path = Path("docs")
 
 THEMES: dict[str, Theme] = {
     "light": {
@@ -291,9 +294,11 @@ def main() -> None:
         chart_cost(m, theme, mode)
         chart_pca(m, theme, mode)
         logging.info("charts rendered: %s", mode)
-    out = RESULTS / "report.html"
-    out.write_text(build_html(m))
-    logging.info("wrote %s (%.1f KB)", out, out.stat().st_size / 1024)
+    html = build_html(m)
+    for out in (RESULTS / "report.html", PAGES / "index.html"):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(html)
+        logging.info("wrote %s (%.1f KB)", out, out.stat().st_size / 1024)
 
 
 if __name__ == "__main__":

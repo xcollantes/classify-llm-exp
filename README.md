@@ -57,6 +57,27 @@ an error instead of a silently missing bar.
 - `results/predictions.csv` — one row per test document, every arm's prediction
 - `results/charts/*.png` — six charts, rendered for light and dark surfaces
 - `results/report.html` — the write-up, charts embedded, opens standalone
+- `docs/index.html` — the same write-up, published by GitHub Pages
+
+## Publishing
+
+`report.py` writes the report twice: once to `results/report.html` and once to
+`docs/index.html`. Every chart is embedded as a base64 data URI, so that single
+file is the entire site — no CSS, JS, or image requests leave the page.
+
+To publish, enable Pages once in the repo settings (Settings → Pages → Source:
+"Deploy from a branch", branch `main`, folder `/docs`), then commit and push:
+
+```bash
+python report.py
+git add docs/index.html results/
+git commit -m "Update published report"
+git push
+```
+
+The site is then served at `https://<user>.github.io/<repo>/`. A `.nojekyll`
+file sits in `docs/` so GitHub serves the HTML as-is instead of running it
+through Jekyll.
 
 ## Notes on method
 

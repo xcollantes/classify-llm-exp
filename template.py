@@ -151,8 +151,26 @@ def build_html(m: ExperimentResults) -> str:
         if cls.cost_usd_per_1k_docs
         else 0.0
     )
+    # Shown in search results and link previews when the page is shared.
+    desc = (
+        f"Three models classify {cfg.n_test} news articles. "
+        f"A {EMBED_MODEL_ID} classifier scored {cls.accuracy:.1%} at "
+        f"${cls.cost_usd_per_1k_docs:.3f} per 1,000 documents, against "
+        f"{best_llm.accuracy:.1%} at "
+        f"${best_llm.cost_usd_per_1k_docs:.3f} for the better LLM."
+    )
 
-    return f"""<title>Embeddings vs Frontier LLMs</title>
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Classifier: Embedding Model vs Frontier LLMs</title>
+<meta name="author" content="Xavier Collantes">
+<meta name="description" content="{desc}">
+<meta property="og:title" content="AI Classifier: Embedding Model vs Frontier LLMs">
+<meta property="og:description" content="{desc}">
+<meta property="og:type" content="article">
 <style>
   :root {{
     --bg: #ffffff; --panel: #fcfcfb; --text: #0b0b0b; --muted: #52514e;
@@ -240,9 +258,11 @@ def build_html(m: ExperimentResults) -> str:
   .swatch {{ display: inline-block; width: 10px; height: 10px;
     border-radius: 2px; margin-right: 6px; vertical-align: baseline; }}
 </style>
+</head>
+<body>
 
 <main>
-<h1>Embeddings vs Frontier LLMs</h1>
+<h1>AI Classifier: Embedding Model vs Frontier LLMs</h1>
 <p class="sub">Can an embedding model that costs
 ${cls.cost_usd_per_1k_docs:.3f} per 1,000 documents beat a frontier LLM at
 sorting news articles into four topics?</p>
@@ -265,7 +285,7 @@ documents · 20 Newsgroups · seed {cfg.seed}</p>
     <div class="n">Gemini Flash-Lite minus GPT-5.4 nano</div></div>
 </div>
 
-<h2>1 · What was tested</h2>
+<h2>What was tested</h2>
 <p class="q">Can 3 AI models classify news articles? Two are LLMs. One is a
 super cheap embedding model.</p>
 
@@ -446,5 +466,7 @@ python report.py          # writes results/charts/*.png + results/report.html</p
 <p class="meta">Raw API responses are cached under <code>results/cache_*.json</code>,
 so a re-run is free and byte-identical. <code>python experiment.py --limit 10</code>
 smoke-tests the whole pipeline for a few cents.</p>
-</main>"""
+</main>
+</body>
+</html>"""
 
