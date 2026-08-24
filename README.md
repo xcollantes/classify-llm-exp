@@ -33,6 +33,23 @@ python -m pytest tests/           # unit tests, no API calls
 `experiment.py` caches every raw API response under `results/cache_*.json`, so
 re-running is free and deterministic. Delete the cache files to force fresh calls.
 
+## Layout
+
+| File | What it is |
+|---|---|
+| `models.py` | pydantic v2 models — the contract for `metrics.json` and the caches |
+| `experiment.py` | runs the four arms, writes validated results |
+| `report.py` | validates results back in, renders the six charts |
+| `template.py` | assembles the charts + numbers into `report.html` |
+| `tests/` | label parsing, metric assembly, model validators — no API calls |
+
+`metrics.json` and every `cache_*.json` round-trip through the models, so a
+stale or half-written file fails loudly at load rather than producing a wrong
+chart. The models also assert what the numbers must mean: accuracy inside its
+own confidence interval, `kind` from a closed set, `y_test` matching the
+configured row count and label set, and `extra="forbid"` so a renamed field is
+an error instead of a silently missing bar.
+
 ## Output
 
 - `results/metrics.json` — accuracy, macro F1, per-class P/R/F1, confusion
