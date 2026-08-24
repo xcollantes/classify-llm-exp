@@ -12,9 +12,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelPrice(BaseModel):
-    """List price for one model, USD per 1M tokens."""
+    """List price for one model, USD per 1 million tokens."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config: ConfigDict = ConfigDict(extra="forbid")
 
     input_per_1m: float = Field(ge=0)
     output_per_1m: float = Field(ge=0)
@@ -23,7 +23,7 @@ class ModelPrice(BaseModel):
 class LlmCall(BaseModel):
     """One LLM classification call: the reply plus what it cost."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config: ConfigDict = ConfigDict(extra="forbid")
 
     reply: str
     latency_s: float = Field(ge=0)
@@ -34,7 +34,7 @@ class LlmCall(BaseModel):
 class SystemMetrics(BaseModel):
     """Scored results for one arm of the experiment."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config: ConfigDict = ConfigDict(extra="forbid")
 
     name: str
     kind: Literal["llm-zero-shot", "embedding+logreg"]
@@ -59,14 +59,15 @@ class SystemMetrics(BaseModel):
         low, high = self.accuracy_ci95
         if not low <= self.accuracy <= high:
             raise ValueError(
-                f"{self.name}: accuracy {self.accuracy} outside CI [{low}, {high}]")
+                f"{self.name}: accuracy {self.accuracy} outside CI [{low}, {high}]"
+            )
         return self
 
 
 class ExperimentConfig(BaseModel):
     """Everything needed to reproduce the run."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config: ConfigDict = ConfigDict(extra="forbid")
 
     dataset: str
     labels: list[str] = Field(min_length=2)
@@ -81,7 +82,7 @@ class ExperimentConfig(BaseModel):
 class ExperimentResults(BaseModel):
     """The whole of results/metrics.json."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config: ConfigDict = ConfigDict(extra="forbid")
 
     config: ExperimentConfig
     systems: dict[str, SystemMetrics]
@@ -93,7 +94,8 @@ class ExperimentResults(BaseModel):
         if len(self.y_test) != self.config.n_test:
             raise ValueError(
                 f"y_test has {len(self.y_test)} rows, config says "
-                f"{self.config.n_test}")
+                f"{self.config.n_test}"
+            )
         unknown = set(self.y_test) - set(self.config.labels)
         if unknown:
             raise ValueError(f"y_test has labels outside the label set: {unknown}")
